@@ -4,6 +4,7 @@ package co.edu.javeriana.pedidos.shared.exception;
 public enum ErrorCode {
     PRODUCT_NOT_FOUND(404),
     INSUFFICIENT_STOCK(409),
+    RESERVATION_NOT_FOUND(404),
     PAYMENT_REJECTED(402),
     ORDER_NOT_FOUND(404),
     INVALID_STATE(409),
