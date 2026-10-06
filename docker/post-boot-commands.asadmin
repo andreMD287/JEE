@@ -1,0 +1,2 @@
+create-jdbc-connection-pool --datasourceclassname org.postgresql.ds.PGSimpleDataSource --restype javax.sql.DataSource --property user=taller:password=taller:serverName=db:portNumber=5432:databaseName=taller TallerPool
+create-jdbc-resource --connectionpoolid TallerPool jdbc/taller

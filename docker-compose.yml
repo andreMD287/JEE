@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: taller
+      POSTGRES_USER: taller
+      POSTGRES_PASSWORD: taller
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taller -d taller"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:8080"   # API: http://localhost:8081/taller/api (8080 suele estar ocupado)
+      - "4848:4848"   # consola de administracion de Payara
+
+volumes:
+  pgdata:
