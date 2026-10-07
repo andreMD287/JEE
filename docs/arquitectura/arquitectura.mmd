@@ -1,0 +1,110 @@
+---
+title: Taller 1 JEE - Arquitectura del sistema de gestion de pedidos
+config:
+  layout: elk
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: NETWORK_SIMPLEX
+---
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "arial", "fontSize": "16px", "lineColor": "#475569", "primaryTextColor": "#0f172a", "clusterBkg": "#f8fafc", "clusterBorder": "#94a3b8", "edgeLabelBackground": "#ffffff"}, "flowchart": {"curve": "basis", "nodeSpacing": 30, "rankSpacing": 50, "padding": 14, "wrappingWidth": 260}}}%%
+flowchart TB
+    CLI["<b>Cliente</b><br/>Postman / Bruno"]
+
+    subgraph HOST["Docker Compose"]
+        direction TB
+        subgraph APP["Contenedor app : Payara Server 6 Full  -  Jakarta EE 10, Java 17"]
+            direction TB
+            subgraph WAR["taller.war  -  Monolito modular"]
+                direction TB
+
+                subgraph API["Capa REST  (JAX-RS)  /taller/api"]
+                    direction LR
+                    R1["ProductResource<br/><i>/products</i>"]
+                    R2["InventoryResource<br/><i>/inventory</i>"]
+                    R3["OrderResource<br/><i>/orders</i>"]
+                    R4["PaymentResource<br/><i>/payments</i>"]
+                    EX["ExceptionMapper<br/><i>ErrorCode a HTTP</i>"]
+                end
+
+                subgraph SAGA["Patron SAGA  -  Orquestacion"]
+                    direction LR
+                    SO["<b>SagaOrchestrator</b><br/>ejecuta los pasos en orden<br/>y compensa en orden inverso"]
+                    SE["SagaExecution<br/><i>estado y pasos ejecutados</i>"]
+                end
+
+                subgraph DOM["Modulos de dominio  -  Patron CQRS"]
+                    direction LR
+                    subgraph MP["Productos"]
+                        direction TB
+                        PC["ProductCommandService"]
+                        PQ["ProductQueryServiceImpl"]
+                    end
+                    subgraph MI["Inventario"]
+                        direction TB
+                        IC["InventoryServiceImpl"]
+                        IQ["InventoryQueryService"]
+                    end
+                    subgraph MG["Pagos"]
+                        direction TB
+                        GC["PaymentService"]
+                        GQ["PaymentQueryService"]
+                    end
+                    subgraph MO["Pedidos"]
+                        direction TB
+                        OC["OrderCommandService"]
+                        OQ["OrderQueryService"]
+                    end
+                end
+
+                subgraph INFRA["Servicios del contenedor Jakarta EE"]
+                    direction LR
+                    JTA["<b>JTA</b><br/>@Transactional<br/>una transaccion local por paso"]
+                    JPA["<b>JPA</b><br/>EntityManager<br/>unidad tallerPU"]
+                end
+            end
+            DS["<b>Pool JDBC</b> TallerPool<br/><i>JNDI jdbc/taller</i>"]
+        end
+        DB[("<b>Contenedor db</b><br/>PostgreSQL 16")]
+    end
+
+    CLI -- "HTTP / JSON" --> API
+    API -- "POST /orders" --> SAGA
+    API -- "CRUD y consultas" --> DOM
+
+    SO == "2. reservar / liberar" ==> MI
+    SO == "3. cobrar / reversar" ==> MG
+    SO == "1. consultar precios" ==> MP
+    SO == "4. cambiar estado" ==> MO
+    SO -- "registra avance" --- SE
+
+    DOM -- "operaciones transaccionales" --> INFRA
+    JTA --- JPA
+    INFRA -- "ORM" --> DS
+    DS -- "JDBC" --> DB
+
+    DB ~~~ LEY
+
+    subgraph LEY["Convenciones"]
+        direction LR
+        K1["Comando<br/>(escritura)"]
+        K2["Consulta<br/>(lectura)"]
+        K3["Orquestacion SAGA"]
+        K4["Infraestructura<br/>Jakarta EE"]
+        K5["API REST"]
+    end
+
+    classDef client fill:#f1f5f9,stroke:#334155,stroke-width:2px,color:#0f172a
+    classDef api fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e
+    classDef cmd fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+    classDef qry fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px,color:#14532d
+    classDef saga fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#831843
+    classDef infra fill:#ede9fe,stroke:#7c3aed,stroke-width:1.5px,color:#4c1d95
+    classDef data fill:#e2e8f0,stroke:#475569,stroke-width:1.5px,color:#0f172a
+
+    class CLI client
+    class R1,R2,R3,R4,EX,K5 api
+    class PC,IC,OC,GC,K1 cmd
+    class PQ,IQ,OQ,GQ,K2 qry
+    class SO,SE,K3 saga
+    class JTA,JPA,K4 infra
+    class DS,DB data
