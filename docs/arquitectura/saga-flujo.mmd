@@ -1,0 +1,19 @@
+flowchart TD
+    A[Crear pedido PENDIENTE] --> B{Reservar inventario}
+
+    B -->|Inventario insuficiente| C[Cancelar pedido]
+    B -->|Reserva exitosa| D[INVENTARIO_RESERVADO]
+
+    D --> E{Procesar pago}
+
+    E -->|Pago rechazado| F[Liberar inventario]
+    F --> C
+
+    E -->|Pago aprobado| G[PAGO_APROBADO]
+    G --> H{Confirmar pedido}
+
+    H -->|Confirmacion exitosa| I[Pedido CONFIRMADO]
+
+    H -->|Falla la confirmacion| J[Reversar pago]
+    J --> K[Liberar inventario]
+    K --> C
