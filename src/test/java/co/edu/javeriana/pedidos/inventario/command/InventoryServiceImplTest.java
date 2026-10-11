@@ -6,6 +6,7 @@ import co.edu.javeriana.pedidos.productos.model.Product;
 import co.edu.javeriana.pedidos.shared.contract.ItemRequest;
 import co.edu.javeriana.pedidos.shared.contract.ReservationResult;
 import co.edu.javeriana.pedidos.shared.contract.ReservationStatus;
+import co.edu.javeriana.pedidos.shared.exception.DomainException;
 import co.edu.javeriana.pedidos.shared.exception.InsufficientStockException;
 import co.edu.javeriana.pedidos.shared.exception.InvalidStateException;
 import co.edu.javeriana.pedidos.shared.exception.ProductNotFoundException;
@@ -162,6 +163,54 @@ class InventoryServiceImplTest {
     void liberarSinReservaNoHaceNada() {
         service.release(100L);
         verify(em, never()).find(eq(Product.class), any(), any(LockModeType.class));
+    }
+
+    @Test
+    void confirmarMarcaLaReservaComoVendidaSinTocarElStock() {
+        InventoryReservation activa = new InventoryReservation(100L, List.of(new ReservedItem(1L, 3)));
+        existingReservation(activa);
+        teclado.decreaseStock(3);
+
+        service.confirm(100L);
+        service.confirm(100L);
+
+        assertEquals(ReservationStatus.CONFIRMADA, activa.getStatus());
+        assertEquals(7, teclado.getStock());
+    }
+
+    @Test
+    void confirmarSinReservaOLiberadaFalla() {
+        assertThrows(DomainException.class, () -> service.confirm(100L));
+
+        InventoryReservation liberada = new InventoryReservation(100L, List.of(new ReservedItem(1L, 3)));
+        liberada.markReleased();
+        existingReservation(liberada);
+        assertThrows(InvalidStateException.class, () -> service.confirm(100L));
+    }
+
+    @Test
+    void liberarUnaReservaConfirmadaDevuelveElStock() {
+        InventoryReservation confirmada = new InventoryReservation(100L, List.of(new ReservedItem(1L, 3)));
+        confirmada.markConfirmed();
+        existingReservation(confirmada);
+        teclado.decreaseStock(3);
+
+        service.release(100L);
+
+        assertEquals(10, teclado.getStock());
+        assertEquals(ReservationStatus.LIBERADA, confirmada.getStatus());
+    }
+
+    @Test
+    void reservarDeNuevoUnPedidoConfirmadoNoDescuentaOtraVez() {
+        InventoryReservation confirmada = new InventoryReservation(100L, List.of(new ReservedItem(1L, 3)));
+        confirmada.markConfirmed();
+        existingReservation(confirmada);
+
+        ReservationResult result = service.reserve(100L, List.of(new ItemRequest(1L, 3)));
+
+        assertEquals(ReservationStatus.CONFIRMADA, result.status());
+        assertEquals(10, teclado.getStock());
     }
 
     @Test

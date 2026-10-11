@@ -47,7 +47,7 @@ public class SagaQueryService {
                 .findFirst()
                 .map(this::toView)
                 .orElseThrow(() -> new DomainException(
-                        ErrorCode.ORDER_NOT_FOUND,
+                        ErrorCode.SAGA_NOT_FOUND,
                         "No existe una SAGA para el pedido " + orderId
                 ));
     }
@@ -59,6 +59,13 @@ public class SagaQueryService {
                 saga.getStatus(),
                 saga.getCurrentStep(),
                 saga.getFailureReason(),
+                saga.getSteps().stream()
+                        .map(step -> new SagaView.Step(
+                                step.getStep(),
+                                step.getDetail(),
+                                step.getExecutedAt()
+                        ))
+                        .toList(),
                 saga.getCreatedAt(),
                 saga.getUpdatedAt()
         );

@@ -21,27 +21,32 @@ import java.util.Map;
 @Transactional(Transactional.TxType.SUPPORTS)
 public class InventoryQueryService {
 
+    private static final String SELECT_PRODUCT = "SELECT p.id, p.name, p.stock, p.active FROM Product p";
+
+    private static final String SUM_BY_PRODUCT =
+            "SELECT i.productId, r.status, SUM(i.quantity) FROM InventoryReservation r JOIN r.items i "
+                    + "WHERE r.status IN :statuses";
+
     @PersistenceContext(unitName = "tallerPU")
     EntityManager em;
 
-    /** Inventario disponible de todos los productos, con lo reservado en reservas activas. */
+    /** Inventario de todos los productos: disponible, reservado por pedidos en curso y vendido. */
     public List<InventoryView> findAll() {
-        Map<Long, Long> reserved = reservedByProduct();
-        return em.createQuery("SELECT p.id, p.name, p.stock, p.active FROM Product p ORDER BY p.id", Object[].class)
+        Map<Long, Map<ReservationStatus, Long>> totals = totalsByProduct(null);
+        return em.createQuery(SELECT_PRODUCT + " ORDER BY p.id", Object[].class)
                 .getResultList()
                 .stream()
-                .map(row -> toView(row, reserved))
+                .map(row -> toView(row, totals))
                 .toList();
     }
 
     public InventoryView findByProduct(Long productId) {
-        Map<Long, Long> reserved = reservedByProduct();
-        return em.createQuery("SELECT p.id, p.name, p.stock, p.active FROM Product p WHERE p.id = :id", Object[].class)
+        Object[] row = em.createQuery(SELECT_PRODUCT + " WHERE p.id = :id", Object[].class)
                 .setParameter("id", productId)
                 .getResultStream()
                 .findFirst()
-                .map(row -> toView(row, reserved))
                 .orElseThrow(() -> new ProductNotFoundException(productId));
+        return toView(row, totalsByProduct(productId));
     }
 
     public ReservationView findReservationByOrder(Long orderId) {
@@ -55,21 +60,33 @@ public class InventoryQueryService {
         List<ReservationView.Item> items = r.getItems().stream()
                 .map(i -> new ReservationView.Item(i.getProductId(), i.getQuantity()))
                 .toList();
-        return new ReservationView(r.getId(), r.getOrderId(), r.getStatus(), items, r.getCreatedAt(), r.getReleasedAt());
+        return new ReservationView(r.getId(), r.getOrderId(), r.getStatus(), items,
+                r.getCreatedAt(), r.getConfirmedAt(), r.getReleasedAt());
     }
 
-    private Map<Long, Long> reservedByProduct() {
-        Map<Long, Long> reserved = new HashMap<>();
-        em.createQuery("SELECT i.productId, SUM(i.quantity) FROM InventoryReservation r JOIN r.items i "
-                        + "WHERE r.status = :status GROUP BY i.productId", Object[].class)
-                .setParameter("status", ReservationStatus.ACTIVA)
-                .getResultList()
-                .forEach(row -> reserved.put((Long) row[0], ((Number) row[1]).longValue()));
-        return reserved;
+    /** Suma de unidades por producto y estado de reserva (ACTIVA y CONFIRMADA). */
+    private Map<Long, Map<ReservationStatus, Long>> totalsByProduct(Long productId) {
+        String jpql = SUM_BY_PRODUCT + (productId != null ? " AND i.productId = :productId" : "")
+                + " GROUP BY i.productId, r.status";
+        var query = em.createQuery(jpql, Object[].class)
+                .setParameter("statuses", List.of(ReservationStatus.ACTIVA, ReservationStatus.CONFIRMADA));
+        if (productId != null) {
+            query.setParameter("productId", productId);
+        }
+        Map<Long, Map<ReservationStatus, Long>> totals = new HashMap<>();
+        for (Object[] row : query.getResultList()) {
+            totals.computeIfAbsent((Long) row[0], id -> new HashMap<>())
+                    .put((ReservationStatus) row[1], ((Number) row[2]).longValue());
+        }
+        return totals;
     }
 
-    private static InventoryView toView(Object[] row, Map<Long, Long> reserved) {
+    private static InventoryView toView(Object[] row, Map<Long, Map<ReservationStatus, Long>> totals) {
         Long id = (Long) row[0];
-        return new InventoryView(id, (String) row[1], (Integer) row[2], reserved.getOrDefault(id, 0L), (Boolean) row[3]);
+        Map<ReservationStatus, Long> byStatus = totals.getOrDefault(id, Map.of());
+        return new InventoryView(id, (String) row[1], (Integer) row[2],
+                byStatus.getOrDefault(ReservationStatus.ACTIVA, 0L),
+                byStatus.getOrDefault(ReservationStatus.CONFIRMADA, 0L),
+                (Boolean) row[3]);
     }
 }

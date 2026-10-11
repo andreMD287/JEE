@@ -6,6 +6,8 @@ import co.edu.javeriana.pedidos.productos.model.Product;
 import co.edu.javeriana.pedidos.shared.contract.InventoryService;
 import co.edu.javeriana.pedidos.shared.contract.ItemRequest;
 import co.edu.javeriana.pedidos.shared.contract.ReservationResult;
+import co.edu.javeriana.pedidos.shared.exception.DomainException;
+import co.edu.javeriana.pedidos.shared.exception.ErrorCode;
 import co.edu.javeriana.pedidos.shared.exception.InsufficientStockException;
 import co.edu.javeriana.pedidos.shared.exception.InvalidStateException;
 import co.edu.javeriana.pedidos.shared.exception.ProductNotFoundException;
@@ -36,20 +38,18 @@ public class InventoryServiceImpl implements InventoryService {
     /**
      * Reserva atomica: bloquea los productos (SELECT ... FOR UPDATE), valida todo el pedido y solo
      * entonces descuenta stock y registra la reserva. Si falla cualquier producto no se modifica nada.
-     * Idempotente: reservar de nuevo el mismo pedido devuelve la reserva activa existente.
+     * Idempotente: reservar de nuevo el mismo pedido devuelve la reserva existente.
      */
     @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public ReservationResult reserve(Long orderId, List<ItemRequest> items) {
-        if (orderId == null) {
-            throw new ValidationException("El id del pedido es obligatorio");
-        }
+        requireOrderId(orderId);
         Map<Long, Integer> quantities = groupByProduct(items);
 
         Optional<InventoryReservation> existing = findByOrder(orderId, LockModeType.NONE);
         if (existing.isPresent()) {
             InventoryReservation reservation = existing.get();
-            if (!reservation.isActive()) {
+            if (reservation.isReleased()) {
                 throw new InvalidStateException("La reserva del pedido " + orderId + " ya fue liberada");
             }
             return toResult(reservation);
@@ -86,14 +86,33 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     /**
-     * Compensacion: devuelve el stock reservado. Idempotente: si no hay reserva o ya fue liberada,
-     * no hace nada, asi la SAGA puede invocarla sin conocer el estado previo.
+     * Ultimo paso del pedido: el stock reservado queda vendido. Idempotente.
+     */
+    @Override
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public void confirm(Long orderId) {
+        requireOrderId(orderId);
+        InventoryReservation reservation = findByOrder(orderId, LockModeType.PESSIMISTIC_WRITE)
+                .orElseThrow(() -> new DomainException(ErrorCode.RESERVATION_NOT_FOUND,
+                        "No existe reserva para el pedido " + orderId));
+        if (reservation.isReleased()) {
+            throw new InvalidStateException("La reserva del pedido " + orderId + " ya fue liberada");
+        }
+        if (reservation.isActive()) {
+            reservation.markConfirmed();
+        }
+    }
+
+    /**
+     * Compensacion: devuelve el stock de una reserva ACTIVA o CONFIRMADA. Idempotente: si no hay
+     * reserva o ya fue liberada no hace nada, asi la SAGA puede invocarla sin conocer el estado previo.
      */
     @Override
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void release(Long orderId) {
+        requireOrderId(orderId);
         Optional<InventoryReservation> found = findByOrder(orderId, LockModeType.PESSIMISTIC_WRITE);
-        if (found.isEmpty() || !found.get().isActive()) {
+        if (found.isEmpty() || found.get().isReleased()) {
             return;
         }
         InventoryReservation reservation = found.get();
@@ -108,6 +127,12 @@ public class InventoryServiceImpl implements InventoryService {
                     product.increaseStock(item.getQuantity());
                 });
         reservation.markReleased();
+    }
+
+    private static void requireOrderId(Long orderId) {
+        if (orderId == null) {
+            throw new ValidationException("El id del pedido es obligatorio");
+        }
     }
 
     private Map<Long, Integer> groupByProduct(List<ItemRequest> items) {

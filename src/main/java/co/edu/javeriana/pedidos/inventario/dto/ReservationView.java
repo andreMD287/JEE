@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.List;
 
 public record ReservationView(Long id, Long orderId, ReservationStatus status, List<Item> items,
-                              Instant createdAt, Instant releasedAt) {
+                              Instant createdAt, Instant confirmedAt, Instant releasedAt) {
 
     public record Item(Long productId, int quantity) {
     }

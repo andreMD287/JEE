@@ -1,19 +1,65 @@
-flowchart TD
-    A[Crear pedido PENDIENTE] --> B{Reservar inventario}
+---
+title: Taller 1 JEE - Flujo de la SAGA de compra y compensaciones
+config:
+  layout: elk
+  elk:
+    mergeEdges: false
+    nodePlacementStrategy: NETWORK_SIMPLEX
+---
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "arial", "fontSize": "16px", "lineColor": "#475569", "primaryTextColor": "#0f172a", "clusterBkg": "#f8fafc", "clusterBorder": "#94a3b8", "edgeLabelBackground": "#ffffff"}, "flowchart": {"curve": "basis", "nodeSpacing": 40, "rankSpacing": 45, "padding": 14, "wrappingWidth": 400}}}%%
+flowchart TB
+    START(["<b>POST /orders</b><br/>OrderSagaOrchestrator"])
 
-    B -->|Inventario insuficiente| C[Cancelar pedido]
-    B -->|Reserva exitosa| D[INVENTARIO_RESERVADO]
+    S1["<b>1. Crear pedido</b><br/>consulta precios en Productos<br/>Pedido: PENDIENTE<br/>SAGA: IN_PROGRESS"]
+    D2{"<b>2. Reservar<br/>inventario</b>"}
+    S2["Reserva: ACTIVA<br/>Pedido: INVENTARIO_RESERVADO"]
+    D3{"<b>3. Procesar<br/>pago</b>"}
+    S3["Pago: APROBADO<br/>Pedido: PAGO_APROBADO"]
+    D4{"<b>4. Confirmar<br/>pedido</b>"}
+    END_OK(["<b>Pedido: CONFIRMADO</b><br/>Reserva: CONFIRMADA<br/>SAGA: COMPLETED"])
 
-    D --> E{Procesar pago}
+    C1["<b>Reversar pago</b><br/>Pago: REVERSADO"]
+    C2["<b>Liberar inventario</b><br/>Reserva: LIBERADA<br/>se devuelve el stock"]
+    C3(["<b>Cancelar pedido</b><br/>Pedido: CANCELADO<br/>SAGA: COMPENSATED"])
 
-    E -->|Pago rechazado| F[Liberar inventario]
-    F --> C
+    START --> S1
+    S1 --> D2
+    D2 -- "reserva exitosa" --> S2
+    S2 --> D3
+    D3 -- "pago aprobado" --> S3
+    S3 --> D4
+    D4 -- "confirmacion exitosa" --> END_OK
 
-    E -->|Pago aprobado| G[PAGO_APROBADO]
-    G --> H{Confirmar pedido}
+    D4 -. "falla la confirmacion" .-> C1
+    D3 -. "pago rechazado" .-> C2
+    D2 -. "inventario insuficiente<br/>o producto inactivo" .-> C3
+    C1 --> C2
+    C2 --> C3
 
-    H -->|Confirmacion exitosa| I[Pedido CONFIRMADO]
+    C3 ~~~ LEY
 
-    H -->|Falla la confirmacion| J[Reversar pago]
-    J --> K[Liberar inventario]
-    K --> C
+    subgraph LEY["Convenciones"]
+        direction TB
+        K1["Paso exitoso: una transaccion JTA local"]
+        K2["Decision del orquestador"]
+        K3["Compensacion: orden inverso, idempotente"]
+        K4["Si una compensacion falla, la SAGA queda<br/>en FAILED y el motivo se registra en su bitacora"]
+    end
+
+    classDef start fill:#f1f5f9,stroke:#334155,stroke-width:2px,color:#0f172a
+    classDef step fill:#e0f2fe,stroke:#0284c7,stroke-width:1.5px,color:#0c4a6e
+    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:1.5px,color:#78350f
+    classDef ok fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d
+    classDef comp fill:#fce7f3,stroke:#db2777,stroke-width:1.5px,color:#831843
+    classDef cancel fill:#fecdd3,stroke:#be123c,stroke-width:2px,color:#881337
+    classDef note fill:#ffffff,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:4 3,color:#334155
+
+    class START start
+    class S1,S2,S3,K1 step
+    class D2,D3,D4,K2 decision
+    class END_OK ok
+    class C1,C2,K3 comp
+    class C3 cancel
+    class K4 note
+
+    linkStyle 7,8,9,10,11 stroke:#be123c,stroke-width:2px

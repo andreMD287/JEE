@@ -87,6 +87,7 @@ class OrderSagaOrchestratorTest {
         sequence.verify(orders).markInventoryReserved(ORDER_ID);
         sequence.verify(payments).process(ORDER_ID, TOTAL, false);
         sequence.verify(orders).markPaymentApproved(ORDER_ID);
+        sequence.verify(inventory).confirm(ORDER_ID);
         sequence.verify(orders).confirm(ORDER_ID);
 
         verify(inventory, never()).release(ORDER_ID);
@@ -148,19 +149,23 @@ class OrderSagaOrchestratorTest {
                 () -> orchestrator.process(command)
         );
 
-        assertEquals(ErrorCode.INTERNAL_ERROR, exception.getCode());
+        assertEquals(ErrorCode.CONFIRMATION_FAILED, exception.getCode());
 
         verify(orders).markPaymentApproved(ORDER_ID);
         verify(orders).startCompensation(
                 ORDER_ID,
                 "Fallo simulado al confirmar el pedido 10"
         );
-        verify(payments).reverse(ORDER_ID);
-        verify(inventory).release(ORDER_ID);
-        verify(orders).completeCompensation(
+        InOrder compensation = inOrder(orders, payments, inventory);
+        compensation.verify(payments).reverse(ORDER_ID);
+        compensation.verify(orders).recordSagaStep(ORDER_ID, "PAGO_REVERSADO", null);
+        compensation.verify(inventory).release(ORDER_ID);
+        compensation.verify(orders).recordSagaStep(ORDER_ID, "INVENTARIO_LIBERADO", null);
+        compensation.verify(orders).completeCompensation(
                 ORDER_ID,
                 "Fallo simulado al confirmar el pedido 10"
         );
+        verify(inventory, never()).confirm(ORDER_ID);
         verify(orders, never()).confirm(ORDER_ID);
     }
 
@@ -238,6 +243,70 @@ class OrderSagaOrchestratorTest {
                 any(),
                 any()
         );
+    }
+
+    @Test
+    void shouldReleaseConfirmedReservationWhenOrderConfirmationFails() {
+        ProcessOrderCommand command = command(false, false);
+
+        when(orders.create(any())).thenReturn(ORDER_ID);
+        when(orderQueries.findById(ORDER_ID))
+                .thenReturn(order(OrderStatus.INVENTARIO_RESERVADO));
+        when(payments.process(ORDER_ID, TOTAL, false))
+                .thenReturn(new PaymentResult(
+                        1L,
+                        ORDER_ID,
+                        TOTAL,
+                        PaymentStatus.APROBADO
+                ));
+        org.mockito.Mockito.doThrow(new DomainException(
+                        ErrorCode.INVALID_STATE,
+                        "No se pudo confirmar"
+                ))
+                .when(orders)
+                .confirm(ORDER_ID);
+
+        DomainException exception = assertThrows(
+                DomainException.class,
+                () -> orchestrator.process(command)
+        );
+
+        assertEquals(ErrorCode.INVALID_STATE, exception.getCode());
+        verify(inventory).confirm(ORDER_ID);
+        verify(payments).reverse(ORDER_ID);
+        verify(inventory).release(ORDER_ID);
+        verify(orders).completeCompensation(ORDER_ID, "No se pudo confirmar");
+    }
+
+    @Test
+    void shouldNotTreatStepLogFailureAsCompensationFailure() {
+        ProcessOrderCommand command = command(true, false);
+
+        when(orders.create(any())).thenReturn(ORDER_ID);
+        when(orderQueries.findById(ORDER_ID))
+                .thenReturn(order(OrderStatus.INVENTARIO_RESERVADO));
+        when(payments.process(ORDER_ID, TOTAL, true))
+                .thenReturn(new PaymentResult(
+                        1L,
+                        ORDER_ID,
+                        TOTAL,
+                        PaymentStatus.RECHAZADO
+                ));
+        org.mockito.Mockito.doThrow(new RuntimeException("bitacora no disponible"))
+                .when(orders)
+                .recordSagaStep(any(), any(), any());
+
+        DomainException exception = assertThrows(
+                DomainException.class,
+                () -> orchestrator.process(command)
+        );
+
+        assertEquals(ErrorCode.PAYMENT_REJECTED, exception.getCode());
+        verify(orders).completeCompensation(
+                ORDER_ID,
+                "El pago del pedido 10 fue rechazado"
+        );
+        verify(orders, never()).failSaga(any(), any());
     }
 
     private ProcessOrderCommand command(

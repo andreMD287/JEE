@@ -41,6 +41,9 @@ public class InventoryReservation {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
+
     @Column(name = "released_at")
     private Instant releasedAt;
 
@@ -57,6 +60,15 @@ public class InventoryReservation {
 
     public boolean isActive() {
         return status == ReservationStatus.ACTIVA;
+    }
+
+    public boolean isReleased() {
+        return status == ReservationStatus.LIBERADA;
+    }
+
+    public void markConfirmed() {
+        this.status = ReservationStatus.CONFIRMADA;
+        this.confirmedAt = Instant.now();
     }
 
     public void markReleased() {
@@ -82,6 +94,10 @@ public class InventoryReservation {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getConfirmedAt() {
+        return confirmedAt;
     }
 
     public Instant getReleasedAt() {

@@ -13,6 +13,17 @@ public interface InventoryService {
      */
     ReservationResult reserve(Long orderId, List<ItemRequest> items);
 
-    /** Compensacion. Idempotente: liberar dos veces no duplica el stock. */
+    /**
+     * Ultimo paso del pedido: la reserva pasa a CONFIRMADA (el stock queda vendido).
+     * Idempotente: confirmar dos veces no cambia nada.
+     *
+     * @throws co.edu.javeriana.pedidos.shared.exception.InvalidStateException si ya fue liberada
+     */
+    void confirm(Long orderId);
+
+    /**
+     * Compensacion: devuelve el stock de una reserva ACTIVA o CONFIRMADA.
+     * Idempotente: liberar dos veces, o sin reserva, no duplica el stock.
+     */
     void release(Long orderId);
 }

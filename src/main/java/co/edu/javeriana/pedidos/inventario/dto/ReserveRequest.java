@@ -7,5 +7,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 /** Solo para probar el modulo de forma aislada; en el flujo real la reserva la pide la SAGA. */
-public record ReserveRequest(@NotNull Long orderId, @NotEmpty List<ItemRequest> items) {
+public record ReserveRequest(@NotNull(message = "es obligatorio") Long orderId,
+                             @NotEmpty(message = "debe contener al menos un producto") List<ItemRequest> items) {
 }

@@ -1,0 +1,9 @@
+# Los archivos que se ejecutan dentro del contenedor Linux deben conservar saltos de linea LF,
+# aunque el repositorio se clone en Windows (core.autocrlf=true).
+*.asadmin    text eol=lf
+*.sh         text eol=lf
+Dockerfile   text eol=lf
+*.yml        text eol=lf
+
+*.png binary
+*.jpg binary

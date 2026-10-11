@@ -13,6 +13,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -30,6 +31,8 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 public class InventoryResource {
+
+    private static final String BODY_REQUIRED = "El cuerpo de la petición es obligatorio";
 
     @Inject
     InventoryService inventory;
@@ -56,11 +59,18 @@ public class InventoryResource {
 
     @POST
     @Path("/reservations")
-    public Response reserve(@Valid @NotNull ReserveRequest request) {
+    public Response reserve(@Valid @NotNull(message = BODY_REQUIRED) ReserveRequest request) {
         inventory.reserve(request.orderId(), request.items());
         return Response.status(Response.Status.CREATED)
                 .entity(queries.findReservationByOrder(request.orderId()))
                 .build();
+    }
+
+    @PUT
+    @Path("/reservations/{orderId}/confirm")
+    public ReservationView confirm(@PathParam("orderId") Long orderId) {
+        inventory.confirm(orderId);
+        return queries.findReservationByOrder(orderId);
     }
 
     @DELETE

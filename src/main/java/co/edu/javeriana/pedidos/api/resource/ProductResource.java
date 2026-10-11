@@ -32,6 +32,8 @@ import java.util.List;
 @Consumes(MediaType.APPLICATION_JSON)
 public class ProductResource {
 
+    private static final String BODY_REQUIRED = "El cuerpo de la petición es obligatorio";
+
     @Inject
     ProductCommandService commands;
 
@@ -39,7 +41,7 @@ public class ProductResource {
     ProductQueryServiceImpl queries;
 
     @POST
-    public Response create(@Valid @NotNull CreateProductRequest request, @Context UriInfo uriInfo) {
+    public Response create(@Valid @NotNull(message = BODY_REQUIRED) CreateProductRequest request, @Context UriInfo uriInfo) {
         Long id = commands.create(request);
         return Response.created(uriInfo.getAbsolutePathBuilder().path(id.toString()).build())
                 .entity(queries.findById(id))
@@ -59,14 +61,14 @@ public class ProductResource {
 
     @PUT
     @Path("/{id}/price")
-    public ProductView updatePrice(@PathParam("id") Long id, @Valid @NotNull UpdatePriceRequest request) {
+    public ProductView updatePrice(@PathParam("id") Long id, @Valid @NotNull(message = BODY_REQUIRED) UpdatePriceRequest request) {
         commands.updatePrice(id, request.price());
         return queries.findById(id);
     }
 
     @PUT
     @Path("/{id}/stock")
-    public ProductView updateStock(@PathParam("id") Long id, @Valid @NotNull UpdateStockRequest request) {
+    public ProductView updateStock(@PathParam("id") Long id, @Valid @NotNull(message = BODY_REQUIRED) UpdateStockRequest request) {
         commands.updateStock(id, request.stock());
         return queries.findById(id);
     }
@@ -74,7 +76,7 @@ public class ProductResource {
     @PUT
     @Path("/{id}/availability")
     public ProductView updateAvailability(@PathParam("id") Long id,
-                                          @Valid @NotNull UpdateAvailabilityRequest request) {
+                                          @Valid @NotNull(message = BODY_REQUIRED) UpdateAvailabilityRequest request) {
         commands.updateAvailability(id, request.active());
         return queries.findById(id);
     }

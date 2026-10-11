@@ -17,7 +17,6 @@ import co.edu.javeriana.pedidos.shared.contract.ProductQueryService;
 import co.edu.javeriana.pedidos.shared.contract.SagaStatus;
 import co.edu.javeriana.pedidos.shared.exception.DomainException;
 import co.edu.javeriana.pedidos.shared.exception.ErrorCode;
-import co.edu.javeriana.pedidos.shared.exception.InvalidStateException;
 import co.edu.javeriana.pedidos.shared.exception.ValidationException;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -41,15 +40,11 @@ public class OrderCommandService {
 
         List<OrderItem> orderItems = new ArrayList<>();
 
+        // Solo se valida que el producto exista y se captura su precio actual. La disponibilidad
+        // (stock y producto activo) la decide el paso de inventario de la SAGA: si falla, el pedido
+        // queda registrado y se cancela mediante compensacion, como indica el flujo del taller.
         for (ItemRequest requestedItem : command.items()) {
             ProductInfo product = products.getProduct(requestedItem.productId());
-
-            if (!product.available()) {
-                throw new InvalidStateException(
-                        "El producto " + product.id()
-                                + " no está disponible"
-                );
-            }
 
             orderItems.add(new OrderItem(
                     product.id(),
@@ -127,6 +122,11 @@ public class OrderCommandService {
         }
 
         saga.compensated(reason);
+    }
+
+    /** Deja constancia en la bitacora de la SAGA de una accion que no cambia el estado del pedido. */
+    public void recordSagaStep(Long orderId, String step, String detail) {
+        lockSaga(orderId).recordStep(step, detail);
     }
 
     public void failSaga(Long orderId, String reason) {

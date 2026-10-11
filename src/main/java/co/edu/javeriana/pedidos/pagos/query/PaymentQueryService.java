@@ -4,6 +4,8 @@ import java.util.List;
 
 import co.edu.javeriana.pedidos.pagos.dto.PaymentView;
 import co.edu.javeriana.pedidos.pagos.model.Payment;
+import co.edu.javeriana.pedidos.shared.exception.DomainException;
+import co.edu.javeriana.pedidos.shared.exception.ErrorCode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -26,6 +28,21 @@ public class PaymentQueryService {
                 .stream()
                 .map(PaymentQueryService::toView)
                 .toList();
+    }
+
+    public PaymentView findByOrderId(Long orderId) {
+        return em.createQuery(
+                        "SELECT p FROM Payment p WHERE p.orderId = :orderId",
+                        Payment.class
+                )
+                .setParameter("orderId", orderId)
+                .getResultStream()
+                .findFirst()
+                .map(PaymentQueryService::toView)
+                .orElseThrow(() -> new DomainException(
+                        ErrorCode.PAYMENT_NOT_FOUND,
+                        "No existe un pago para el pedido " + orderId
+                ));
     }
 
     private static PaymentView toView(Payment payment) {

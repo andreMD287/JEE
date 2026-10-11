@@ -7,10 +7,10 @@ import jakarta.validation.constraints.NotNull;
 
 /** DTO usado solamente para probar el módulo de pagos de forma aislada. */
 public record ProcessPaymentRequest(
-        @NotNull Long orderId,
+        @NotNull(message = "es obligatorio") Long orderId,
 
-        @NotNull
-        @DecimalMin(value = "0.01")
+        @NotNull(message = "es obligatorio")
+        @DecimalMin(value = "0.01", message = "debe ser mayor que cero")
         BigDecimal amount,
 
         boolean simulateFailure

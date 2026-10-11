@@ -32,6 +32,8 @@ import jakarta.ws.rs.core.Response;
 @Consumes(MediaType.APPLICATION_JSON)
 public class PaymentResource {
 
+    private static final String BODY_REQUIRED = "El cuerpo de la petición es obligatorio";
+
     @Inject
     PaymentService payments;
 
@@ -43,9 +45,15 @@ public class PaymentResource {
         return queries.findAll();
     }
 
+    @GET
+    @Path("/{orderId}")
+    public PaymentView getByOrder(@PathParam("orderId") Long orderId) {
+        return queries.findByOrderId(orderId);
+    }
+
     @POST
     public Response process(
-            @Valid @NotNull ProcessPaymentRequest request
+            @Valid @NotNull(message = BODY_REQUIRED) ProcessPaymentRequest request
     ) {
         PaymentResult result = payments.process(
                 request.orderId(),

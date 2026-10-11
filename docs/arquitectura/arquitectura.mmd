@@ -23,13 +23,15 @@ flowchart TB
                     R2["InventoryResource<br/><i>/inventory</i>"]
                     R3["OrderResource<br/><i>/orders</i>"]
                     R4["PaymentResource<br/><i>/payments</i>"]
-                    EX["ExceptionMapper<br/><i>ErrorCode a HTTP</i>"]
+                    R5["SagaResource<br/><i>/sagas</i>"]
+                    EX["ExceptionMappers<br/><i>errores en JSON uniforme</i>"]
                 end
 
                 subgraph SAGA["Patron SAGA  -  Orquestacion"]
                     direction LR
-                    SO["<b>SagaOrchestrator</b><br/>ejecuta los pasos en orden<br/>y compensa en orden inverso"]
-                    SE["SagaExecution<br/><i>estado y pasos ejecutados</i>"]
+                    SO["<b>OrderSagaOrchestrator</b><br/>ejecuta los pasos en orden<br/>y compensa en orden inverso"]
+                    SE["SagaExecution<br/><i>estado y bitacora de pasos</i>"]
+                    SQ["SagaQueryService"]
                 end
 
                 subgraph DOM["Modulos de dominio  -  Patron CQRS"]
@@ -39,6 +41,11 @@ flowchart TB
                         PC["ProductCommandService"]
                         PQ["ProductQueryServiceImpl"]
                     end
+                    subgraph MO["Pedidos"]
+                        direction TB
+                        OC["OrderCommandService<br/><i>toma precios de ProductQueryService</i>"]
+                        OQ["OrderQueryService"]
+                    end
                     subgraph MI["Inventario"]
                         direction TB
                         IC["InventoryServiceImpl"]
@@ -46,13 +53,8 @@ flowchart TB
                     end
                     subgraph MG["Pagos"]
                         direction TB
-                        GC["PaymentService"]
+                        GC["PaymentServiceImpl"]
                         GQ["PaymentQueryService"]
-                    end
-                    subgraph MO["Pedidos"]
-                        direction TB
-                        OC["OrderCommandService"]
-                        OQ["OrderQueryService"]
                     end
                 end
 
@@ -71,11 +73,10 @@ flowchart TB
     API -- "POST /orders" --> SAGA
     API -- "CRUD y consultas" --> DOM
 
-    SO == "2. reservar / liberar" ==> MI
+    SO == "2. reservar<br/>4. confirmar / liberar" ==> MI
     SO == "3. cobrar / reversar" ==> MG
-    SO == "1. consultar precios" ==> MP
-    SO == "4. cambiar estado" ==> MO
-    SO -- "registra avance" --- SE
+    SO == "1. crear pedido<br/>4. confirmar / cancelar" ==> MO
+    SO -- "registra pasos" --- SE
 
     DOM -- "operaciones transaccionales" --> INFRA
     JTA --- JPA
@@ -102,9 +103,9 @@ flowchart TB
     classDef data fill:#e2e8f0,stroke:#475569,stroke-width:1.5px,color:#0f172a
 
     class CLI client
-    class R1,R2,R3,R4,EX,K5 api
+    class R1,R2,R3,R4,R5,EX,K5 api
     class PC,IC,OC,GC,K1 cmd
-    class PQ,IQ,OQ,GQ,K2 qry
+    class PQ,IQ,OQ,GQ,SQ,K2 qry
     class SO,SE,K3 saga
     class JTA,JPA,K4 infra
     class DS,DB data
